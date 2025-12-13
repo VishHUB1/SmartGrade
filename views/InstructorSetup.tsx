@@ -5,11 +5,13 @@ import { Sparkles, Save, Book, Sliders, Mic, Paperclip, FileText, Trash2, Plus, 
 
 interface Props {
   config: AssignmentConfig;
+  onChange: (config: AssignmentConfig) => void;
   onSave: (config: AssignmentConfig) => void;
 }
 
-export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
-  const [localConfig, setLocalConfig] = useState<AssignmentConfig>(config);
+export const InstructorSetup: React.FC<Props> = ({ config, onChange, onSave }) => {
+  // REMOVED localConfig state. We now rely entirely on props to persist data across unmounts.
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -39,14 +41,12 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
             }
           }
 
-          // Update main text with finalized chunks
+          // Update main text with finalized chunks via PROP
           if (finalTranscriptChunk) {
-             setLocalConfig(prev => {
-               const separator = prev.additionalCriteria && !prev.additionalCriteria.endsWith(' ') ? ' ' : '';
-               return {
-                 ...prev,
-                 additionalCriteria: prev.additionalCriteria + separator + finalTranscriptChunk
-               };
+             const separator = config.additionalCriteria && !config.additionalCriteria.endsWith(' ') ? ' ' : '';
+             onChange({
+                 ...config,
+                 additionalCriteria: config.additionalCriteria + separator + finalTranscriptChunk
              });
           }
 
@@ -64,9 +64,6 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
         };
 
         recognition.onend = () => {
-           // If it stops but we think we are recording, it might have timed out or lost focus.
-           // We can choose to restart or just sync state.
-           // For simplicity, we just sync state.
            if (isRecording) {
              setIsRecording(false);
              setInterimTranscript('');
@@ -82,7 +79,7 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
           recognitionRef.current.stop();
        }
     };
-  }, []); // Remove dependency on isRecording to avoid re-binding
+  }, [config, onChange, isRecording]); // Added dependencies to ensure closure captures latest props if needed
 
   const toggleRecording = () => {
     if (!recognitionRef.current) {
@@ -106,15 +103,15 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
   };
 
   const handleGenerateOutcomes = async () => {
-    if (!localConfig.description && !localConfig.assignmentFile) return;
+    if (!config.description && !config.assignmentFile) return;
     setIsGenerating(true);
-    const outcomes = await generateLearningOutcomes(localConfig.description, localConfig.assignmentFile);
-    setLocalConfig(prev => ({ ...prev, learningOutcomes: outcomes }));
+    const outcomes = await generateLearningOutcomes(config.description, config.assignmentFile);
+    onChange({ ...config, learningOutcomes: outcomes });
     setIsGenerating(false);
   };
 
   const handleChange = (field: keyof AssignmentConfig, value: any) => {
-    setLocalConfig(prev => ({ ...prev, [field]: value }));
+    onChange({ ...config, [field]: value });
   };
 
   const handleFileUpload = (targetField: 'description' | 'additionalCriteria') => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,14 +126,14 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
        const reader = new FileReader();
        reader.onload = (event) => {
          const base64 = event.target?.result as string;
-         setLocalConfig(prev => ({
-           ...prev,
+         onChange({
+           ...config,
            assignmentFile: {
              name: file.name,
              data: base64,
              mimeType: file.type
            }
-         }));
+         });
        };
        reader.readAsDataURL(file);
     } else {
@@ -144,7 +141,7 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
        const reader = new FileReader();
        reader.onload = (event) => {
          const text = event.target?.result as string;
-         const currentText = localConfig[targetField];
+         const currentText = config[targetField];
          const newText = currentText 
            ? `${currentText}\n\n[Attached File Content: ${file.name}]\n${text}`
            : text;
@@ -155,22 +152,22 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
   };
 
   const clearAssignmentFile = () => {
-    setLocalConfig(prev => ({ ...prev, assignmentFile: undefined }));
+    onChange({ ...config, assignmentFile: undefined });
   };
 
   const updateOutcome = (index: number, value: string) => {
-    const newOutcomes = [...localConfig.learningOutcomes];
+    const newOutcomes = [...config.learningOutcomes];
     newOutcomes[index] = value;
-    setLocalConfig(prev => ({ ...prev, learningOutcomes: newOutcomes }));
+    onChange({ ...config, learningOutcomes: newOutcomes });
   };
 
   const deleteOutcome = (index: number) => {
-    const newOutcomes = localConfig.learningOutcomes.filter((_, i) => i !== index);
-    setLocalConfig(prev => ({ ...prev, learningOutcomes: newOutcomes }));
+    const newOutcomes = config.learningOutcomes.filter((_, i) => i !== index);
+    onChange({ ...config, learningOutcomes: newOutcomes });
   };
 
   const addOutcome = () => {
-    setLocalConfig(prev => ({ ...prev, learningOutcomes: [...prev.learningOutcomes, "New Learning Outcome"] }));
+    onChange({ ...config, learningOutcomes: [...config.learningOutcomes, "New Learning Outcome"] });
   };
 
   return (
@@ -186,9 +183,9 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Assignment Title</label>
             <input 
               type="text" 
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              className="w-full px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
               placeholder="e.g. Full-Stack Task Manager with React"
-              value={localConfig.title}
+              value={config.title}
               onChange={(e) => handleChange('title', e.target.value)}
             />
           </div>
@@ -197,9 +194,9 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Assignment Brief / Description</label>
             <div className="relative">
               <textarea 
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition h-32 resize-none"
+                className="w-full px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition h-32 resize-none"
                 placeholder="Paste the assignment description here, or attach a PDF..."
-                value={localConfig.description}
+                value={config.description}
                 onChange={(e) => handleChange('description', e.target.value)}
               />
               <div className="absolute bottom-3 right-3 flex items-center space-x-2 bg-white/80 backdrop-blur-sm p-1 rounded-lg border border-slate-100 shadow-sm">
@@ -210,10 +207,10 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
               </div>
             </div>
             
-            {localConfig.assignmentFile && (
+            {config.assignmentFile && (
               <div className="mt-2 flex items-center bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg text-sm border border-indigo-100 w-fit">
                 <FileText size={16} className="mr-2" />
-                <span className="font-medium mr-2">Attached: {localConfig.assignmentFile.name}</span>
+                <span className="font-medium mr-2">Attached: {config.assignmentFile.name}</span>
                 <button onClick={clearAssignmentFile} className="text-indigo-400 hover:text-indigo-800 transition">
                   <X size={14} />
                 </button>
@@ -228,7 +225,7 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
                 <label className="block text-sm font-medium text-slate-700">Learning Outcomes</label>
                 <button 
                   onClick={handleGenerateOutcomes}
-                  disabled={isGenerating || (!localConfig.description && !localConfig.assignmentFile)}
+                  disabled={isGenerating || (!config.description && !config.assignmentFile)}
                   className="flex items-center text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full hover:bg-indigo-100 disabled:opacity-50 transition"
                 >
                   <Sparkles size={14} className="mr-1" />
@@ -237,14 +234,14 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
              </div>
              
              <div className="space-y-2">
-               {localConfig.learningOutcomes.map((outcome, idx) => (
+               {config.learningOutcomes.map((outcome, idx) => (
                  <div key={idx} className="flex items-center gap-2 group">
                    <span className="w-6 h-6 flex-shrink-0 flex items-center justify-center bg-slate-100 text-slate-500 rounded-full text-xs font-bold">{idx + 1}</span>
                    <input 
                       type="text"
                       value={outcome}
                       onChange={(e) => updateOutcome(idx, e.target.value)}
-                      className="flex-1 px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                      className="flex-1 px-3 py-2 text-sm bg-white text-slate-900 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                    />
                    <button 
                     onClick={() => deleteOutcome(idx)}
@@ -263,7 +260,7 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
                  Add Outcome
                </button>
 
-               {localConfig.learningOutcomes.length === 0 && (
+               {config.learningOutcomes.length === 0 && (
                  <div className="text-sm text-slate-400 italic px-3 py-2 bg-slate-50 rounded border border-dashed border-slate-200">
                    No outcomes yet. Generate them from description or add manually.
                  </div>
@@ -283,8 +280,8 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
            <div className="col-span-1">
              <label className="block text-sm font-medium text-slate-700 mb-2">Class Context</label>
              <select 
-               className="w-full md:w-1/3 px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
-               value={localConfig.classContext}
+               className="w-full md:w-1/3 px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+               value={config.classContext}
                onChange={(e) => handleChange('classContext', e.target.value)}
              >
                <option value="Beginner">Beginner (1st Year)</option>
@@ -305,9 +302,9 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
              <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">
                     <textarea 
-                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-40 text-sm"
+                        className="w-full px-4 py-3 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-40 text-sm"
                         placeholder="Type your grading philosophy here, or use the voice button to dictate instructions..."
-                        value={localConfig.additionalCriteria || ''}
+                        value={config.additionalCriteria || ''}
                         onChange={(e) => handleChange('additionalCriteria', e.target.value)}
                     />
                      <div className="absolute bottom-3 right-3 flex items-center space-x-2 bg-white/90 backdrop-blur-sm p-1 rounded-lg border border-slate-200 shadow-sm">
@@ -346,7 +343,7 @@ export const InstructorSetup: React.FC<Props> = ({ config, onSave }) => {
 
       <div className="flex justify-end">
         <button 
-          onClick={() => onSave(localConfig)}
+          onClick={() => onSave(config)}
           className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-all"
         >
           <Save size={20} className="mr-2" />
